@@ -27,6 +27,18 @@ export default function SettingsPage() {
   const [stopInFlight, setStopInFlight] = useState(false);
   const [toast, setToast] = useState<Toast>(null);
 
+  // Tilt control: two fixed-position, fire-and-forget actions against the
+  // separate tilt servo -- no status to poll (the backend command is a
+  // single instant SSH call, not a background process), just per-button
+  // in-flight flags so each button shows its own spinner independently.
+  const [tiltDownInFlight, setTiltDownInFlight] = useState(false);
+  const [tiltRecenterInFlight, setTiltRecenterInFlight] = useState(false);
+
+  // Laser: same fixed, fire-and-forget shape as tilt control above, just
+  // against GPIO12 (on/off) instead of the PCA9685 tilt servo.
+  const [laserOnInFlight, setLaserOnInFlight] = useState(false);
+  const [laserOffInFlight, setLaserOffInFlight] = useState(false);
+
   // useSWR owns the fetch-on-mount + poll-every-5s lifecycle, so this
   // component never calls setState directly inside an effect body -- it
   // just reads whatever useSWR's own subscription last resolved to.
@@ -123,6 +135,62 @@ export default function SettingsPage() {
     }
   }
 
+  async function tiltDown() {
+    setTiltDownInFlight(true);
+    try {
+      const result = await apiClient.tiltDown();
+      const success = result["success"] !== false;
+      showToast(success ? "Tilted down" : "Failed to tilt down", !success);
+    } catch (err) {
+      const message = err instanceof ApiException ? err.message : "connection error";
+      showToast(`Failed to tilt down: ${message}`, true);
+    } finally {
+      setTiltDownInFlight(false);
+    }
+  }
+
+  async function tiltRecenter() {
+    setTiltRecenterInFlight(true);
+    try {
+      const result = await apiClient.tiltRecenter();
+      const success = result["success"] !== false;
+      showToast(success ? "Recentered" : "Failed to recenter", !success);
+    } catch (err) {
+      const message = err instanceof ApiException ? err.message : "connection error";
+      showToast(`Failed to recenter: ${message}`, true);
+    } finally {
+      setTiltRecenterInFlight(false);
+    }
+  }
+
+  async function laserOn() {
+    setLaserOnInFlight(true);
+    try {
+      const result = await apiClient.laserOn();
+      const success = result["success"] !== false;
+      showToast(success ? "Laser on" : "Failed to turn laser on", !success);
+    } catch (err) {
+      const message = err instanceof ApiException ? err.message : "connection error";
+      showToast(`Failed to turn laser on: ${message}`, true);
+    } finally {
+      setLaserOnInFlight(false);
+    }
+  }
+
+  async function laserOff() {
+    setLaserOffInFlight(true);
+    try {
+      const result = await apiClient.laserOff();
+      const success = result["success"] !== false;
+      showToast(success ? "Laser off" : "Failed to turn laser off", !success);
+    } catch (err) {
+      const message = err instanceof ApiException ? err.message : "connection error";
+      showToast(`Failed to turn laser off: ${message}`, true);
+    } finally {
+      setLaserOffInFlight(false);
+    }
+  }
+
   const isRunning = data ? data["running"] === true : null;
   const pid = data?.["pid"] != null ? String(data["pid"]) : null;
   const statusError = Boolean(error);
@@ -145,11 +213,6 @@ export default function SettingsPage() {
     <div className="flex flex-col gap-5">
       <div>
         <h1 className="text-base font-bold">Field of View Sweep</h1>
-        <p className="mt-1 text-[12.5px] text-black/60">
-          The pan servo cycles between two steps — moving to Step 1&apos;s angle and holding it, then
-          Step 2&apos;s angle and holding it, repeating for as long as the sweep runs. For example: Step 1
-          at 90° for 0.70s, then Step 2 at 140° for 0.90s.
-        </p>
       </div>
 
       <Step
@@ -204,6 +267,54 @@ export default function SettingsPage() {
           {stopInFlight ? <Spinner /> : "■"}
           Stop Sweep
         </button>
+      </div>
+
+      <hr className="my-2 border-black/10" />
+
+      <div>
+        <h1 className="mb-4 text-base font-bold">Tilt Control</h1>
+        <div className="flex gap-3">
+          <button
+            onClick={tiltDown}
+            disabled={tiltDownInFlight}
+            className="flex h-[50px] flex-1 items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {tiltDownInFlight ? <Spinner /> : "↓"}
+            Down
+          </button>
+          <button
+            onClick={tiltRecenter}
+            disabled={tiltRecenterInFlight}
+            className="flex h-[50px] flex-1 items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {tiltRecenterInFlight ? <Spinner /> : "⊙"}
+            Recenter
+          </button>
+        </div>
+      </div>
+
+      <hr className="my-2 border-black/10" />
+
+      <div>
+        <h1 className="mb-4 text-base font-bold">Laser</h1>
+        <div className="flex gap-3">
+          <button
+            onClick={laserOn}
+            disabled={laserOnInFlight}
+            className="flex h-[50px] flex-1 items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {laserOnInFlight ? <Spinner /> : "⚡"}
+            On
+          </button>
+          <button
+            onClick={laserOff}
+            disabled={laserOffInFlight}
+            className="flex h-[50px] flex-1 items-center justify-center gap-2 rounded-xl bg-red-500 text-sm font-semibold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400"
+          >
+            {laserOffInFlight ? <Spinner /> : "✕"}
+            Off
+          </button>
+        </div>
       </div>
     </div>
   );

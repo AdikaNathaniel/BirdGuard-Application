@@ -203,6 +203,47 @@ export const apiClient = {
   },
 
   /**
+   * POST /device/tilt/down -- moves the separate tilt servo straight to
+   * its fixed "down" angle. No parameters and no running process -- this
+   * either succeeds or fails immediately, unlike the pan sweep's
+   * start/stop/status trio.
+   */
+  async tiltDown() {
+    const response = await fetch(`${API_BASE_URL}/device/tilt/down`, {
+      method: "POST",
+      headers: headers(true),
+    });
+    return handle(response);
+  },
+
+  /** POST /device/tilt/recenter -- moves the tilt servo back to its fixed "recentered" angle. */
+  async tiltRecenter() {
+    const response = await fetch(`${API_BASE_URL}/device/tilt/recenter`, {
+      method: "POST",
+      headers: headers(true),
+    });
+    return handle(response);
+  },
+
+  /** POST /device/laser/on -- drives GPIO12 high, turning the laser on. */
+  async laserOn() {
+    const response = await fetch(`${API_BASE_URL}/device/laser/on`, {
+      method: "POST",
+      headers: headers(true),
+    });
+    return handle(response);
+  },
+
+  /** POST /device/laser/off -- drives GPIO12 low, turning the laser off. */
+  async laserOff() {
+    const response = await fetch(`${API_BASE_URL}/device/laser/off`, {
+      method: "POST",
+      headers: headers(true),
+    });
+    return handle(response);
+  },
+
+  /**
    * GET /detections -- `before` (ISO date string) fetches detections older
    * than that timestamp, for paginating further back in history.
    */
