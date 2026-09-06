@@ -189,6 +189,28 @@ class ApiClient {
     return _handle(response);
   }
 
+  /// POST /device/tilt/down (Bearer token) -> { success, output }
+  /// Moves the separate tilt servo straight to its fixed "down" angle.
+  /// No parameters and no running process -- this either succeeds or
+  /// fails immediately, unlike the pan sweep's start/stop/status trio.
+  Future<Map<String, dynamic>> tiltDown() async {
+    final response = await _client.post(
+      _uri('/device/tilt/down'),
+      headers: await _headers(auth: true),
+    );
+    return _handle(response);
+  }
+
+  /// POST /device/tilt/recenter (Bearer token) -> { success, output }
+  /// Moves the tilt servo back to its fixed "recentered" angle.
+  Future<Map<String, dynamic>> tiltRecenter() async {
+    final response = await _client.post(
+      _uri('/device/tilt/recenter'),
+      headers: await _headers(auth: true),
+    );
+    return _handle(response);
+  }
+
   /// GET /detections (Bearer token) -> { success, detections: [...] }
   /// [before] (ISO date string) fetches detections older than that
   /// timestamp, for paginating further back in history.

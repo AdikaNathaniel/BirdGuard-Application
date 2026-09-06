@@ -70,6 +70,37 @@ export const COMMANDS = {
     'pkill -9 -f [p]i_servo_calibrate.py || true; sleep 0.3; ' +
     'pgrep -f [p]i_servo_calibrate.py >/dev/null 2>&1 && echo STILL_RUNNING || echo STOPPED',
   SERVO_SWEEP_STATUS: 'pgrep -f [p]i_servo_calibrate.py || true',
+  // Fixed, one-shot tilt commands for the separate tilt servo on PCA9685
+  // channel 8 (see tilt-test/pi_tilt_test.py, the standalone script these
+  // angles were found and confirmed with). Unlike the pan sweep above,
+  // this isn't a long-running background process -- the python one-liner
+  // sets the angle and exits immediately, so there's no PID/status to
+  // track, just two fire-and-forget actions. 140 and 110 are inverted
+  // relative to raw angle for how this servo is mounted: 140 physically
+  // tilts it down, 110 physically tilts it back up (see the comments in
+  // pi_tilt_test.py for how that was determined).
+  // `&& echo TILT_OK || echo TILT_FAILED` (rather than trusting the SSH
+  // exec to just not throw) means a real failure inside the python
+  // process itself -- e.g. the PCA9685 not responding on the I2C bus, or
+  // the venv/import failing -- is distinguishable from a genuine success,
+  // instead of both looking identical to DeviceService. It can't detect
+  // a channel with nothing physically wired to it, though: the PCA9685
+  // happily outputs a PWM signal on any channel 0-15 whether or not
+  // anything is listening, so that failure mode still needs a physical
+  // check, not a software one.
+  // `2>&1` before the OK/FAILED check means a python traceback (e.g. the
+  // PCA9685 not responding on the I2C bus) is captured alongside the
+  // marker, not silently discarded -- so a real failure is both
+  // detectable AND debuggable from the response, not just a bare
+  // "FAILED".
+  TILT_DOWN:
+    'source /home/pi/birdguard-env/bin/activate && ' +
+    '(python3 -c "from adafruit_servokit import ServoKit; kit = ServoKit(channels=16); kit.servo[8].angle = 140" 2>&1 ' +
+    '&& echo TILT_OK || echo TILT_FAILED)',
+  TILT_RECENTER:
+    'source /home/pi/birdguard-env/bin/activate && ' +
+    '(python3 -c "from adafruit_servokit import ServoKit; kit = ServoKit(channels=16); kit.servo[8].angle = 110" 2>&1 ' +
+    '&& echo TILT_OK || echo TILT_FAILED)',
 } as const;
 
 export type CommandKey = keyof typeof COMMANDS;

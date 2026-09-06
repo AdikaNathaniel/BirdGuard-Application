@@ -44,4 +44,17 @@ export class DeviceController {
   async getServoSweepStatus() {
     return this.deviceService.getServoSweepStatus();
   }
+
+  // Separate tilt servo (channel 8) -- two fixed-position actions, no
+  // parameters and no running process to start/stop, so just one route
+  // per action rather than the start/stop/status trio above.
+  @Post('tilt/down')
+  async tiltDown() {
+    return this.deviceService.tiltDown();
+  }
+
+  @Post('tilt/recenter')
+  async tiltRecenter() {
+    return this.deviceService.tiltRecenter();
+  }
 }

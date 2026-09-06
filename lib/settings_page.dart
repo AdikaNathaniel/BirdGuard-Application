@@ -33,6 +33,13 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _startInFlight = false;
   bool _stopInFlight = false;
 
+  // Tilt control: two fixed-position, fire-and-forget actions against the
+  // separate tilt servo -- no status to poll (the backend command is a
+  // single instant SSH call, not a background process), just per-button
+  // in-flight flags so each button shows its own spinner independently.
+  bool _tiltDownInFlight = false;
+  bool _tiltRecenterInFlight = false;
+
   @override
   void initState() {
     super.initState();
@@ -161,6 +168,44 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<void> _tiltDown() async {
+    setState(() => _tiltDownInFlight = true);
+    try {
+      final result = await ApiClient.instance.tiltDown();
+      if (!mounted) return;
+      final success = result['success'] != false;
+      _showSnackBar(
+        success ? 'Tilted down' : 'Failed to tilt down',
+        isError: !success,
+      );
+    } on ApiException catch (e) {
+      _showSnackBar('Failed to tilt down: ${e.message}', isError: true);
+    } catch (_) {
+      _showSnackBar('Failed to tilt down: connection error', isError: true);
+    } finally {
+      if (mounted) setState(() => _tiltDownInFlight = false);
+    }
+  }
+
+  Future<void> _tiltRecenter() async {
+    setState(() => _tiltRecenterInFlight = true);
+    try {
+      final result = await ApiClient.instance.tiltRecenter();
+      if (!mounted) return;
+      final success = result['success'] != false;
+      _showSnackBar(
+        success ? 'Recentered' : 'Failed to recenter',
+        isError: !success,
+      );
+    } on ApiException catch (e) {
+      _showSnackBar('Failed to recenter: ${e.message}', isError: true);
+    } catch (_) {
+      _showSnackBar('Failed to recenter: connection error', isError: true);
+    } finally {
+      if (mounted) setState(() => _tiltRecenterInFlight = false);
+    }
+  }
+
   void _showSnackBar(String message, {bool isError = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -274,6 +319,68 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Widget _buildTiltSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Tilt Control',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Moves the separate tilt servo to a fixed position -- "Down" '
+          'tilts it down, "Recenter" brings it back up.',
+          style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: 50,
+                child: ElevatedButton.icon(
+                  onPressed: _tiltDownInFlight ? null : _tiltDown,
+                  icon: _tiltDownInFlight
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Icon(Icons.arrow_downward),
+                  label: const Text('Down'),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: SizedBox(
+                height: 50,
+                child: ElevatedButton.icon(
+                  onPressed: _tiltRecenterInFlight ? null : _tiltRecenter,
+                  icon: _tiltRecenterInFlight
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Icon(Icons.vertical_align_center),
+                  label: const Text('Recenter'),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool running = _isRunning == true;
@@ -372,6 +479,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 32),
+                const Divider(),
+                const SizedBox(height: 16),
+                _buildTiltSection(),
               ],
             ),
           ),

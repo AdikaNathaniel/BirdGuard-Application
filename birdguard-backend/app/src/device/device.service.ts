@@ -211,4 +211,39 @@ export class DeviceService {
 
     return running ? { success: true, running: true, pid } : { success: true, running: false };
   }
+
+  /**
+   * Moves the separate tilt servo (PCA9685 channel 8) straight to its
+   * fixed "down" angle. Unlike the detector/sweep commands above, this
+   * has no running process to track, but it still needs its own success
+   * check: the SSH exec not throwing only proves the connection worked,
+   * not that the python command inside it actually succeeded (a PCA9685
+   * I2C failure, for instance, would otherwise be reported as a false
+   * success). checkTiltResult() below verifies the TILT_OK marker
+   * commands.ts prints on the Pi's shell-level success/failure.
+   */
+  async tiltDown(): Promise<CommandResult> {
+    return this.checkTiltResult(await this.runCommand('TILT_DOWN'));
+  }
+
+  /** Moves the tilt servo back to its fixed "recentered" angle. */
+  async tiltRecenter(): Promise<CommandResult> {
+    return this.checkTiltResult(await this.runCommand('TILT_RECENTER'));
+  }
+
+  /**
+   * Note: this still can't detect a channel with nothing physically
+   * wired to it -- the PCA9685 happily outputs a PWM signal on any
+   * channel 0-15 whether or not a servo is actually listening, so that
+   * failure mode looks identical to a real success from software alone.
+   */
+  private checkTiltResult(result: CommandResult): CommandResult {
+    if (!result.success) return result;
+
+    const output = result.output ?? '';
+    if (output.includes('TILT_OK')) {
+      return { success: true, output };
+    }
+    return { success: false, error: output || 'Tilt command did not report success' };
+  }
 }
