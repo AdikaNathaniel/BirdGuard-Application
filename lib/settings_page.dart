@@ -40,6 +40,11 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _tiltDownInFlight = false;
   bool _tiltRecenterInFlight = false;
 
+  // Laser: same fixed, fire-and-forget shape as tilt control above, just
+  // against GPIO12 (on/off) instead of the PCA9685 tilt servo.
+  bool _laserOnInFlight = false;
+  bool _laserOffInFlight = false;
+
   @override
   void initState() {
     super.initState();
@@ -203,6 +208,44 @@ class _SettingsPageState extends State<SettingsPage> {
       _showSnackBar('Failed to recenter: connection error', isError: true);
     } finally {
       if (mounted) setState(() => _tiltRecenterInFlight = false);
+    }
+  }
+
+  Future<void> _laserOn() async {
+    setState(() => _laserOnInFlight = true);
+    try {
+      final result = await ApiClient.instance.laserOn();
+      if (!mounted) return;
+      final success = result['success'] != false;
+      _showSnackBar(
+        success ? 'Laser on' : 'Failed to turn laser on',
+        isError: !success,
+      );
+    } on ApiException catch (e) {
+      _showSnackBar('Failed to turn laser on: ${e.message}', isError: true);
+    } catch (_) {
+      _showSnackBar('Failed to turn laser on: connection error', isError: true);
+    } finally {
+      if (mounted) setState(() => _laserOnInFlight = false);
+    }
+  }
+
+  Future<void> _laserOff() async {
+    setState(() => _laserOffInFlight = true);
+    try {
+      final result = await ApiClient.instance.laserOff();
+      if (!mounted) return;
+      final success = result['success'] != false;
+      _showSnackBar(
+        success ? 'Laser off' : 'Failed to turn laser off',
+        isError: !success,
+      );
+    } on ApiException catch (e) {
+      _showSnackBar('Failed to turn laser off: ${e.message}', isError: true);
+    } catch (_) {
+      _showSnackBar('Failed to turn laser off: connection error', isError: true);
+    } finally {
+      if (mounted) setState(() => _laserOffInFlight = false);
     }
   }
 
@@ -375,6 +418,63 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Widget _buildLaserSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Laser',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: 50,
+                child: ElevatedButton.icon(
+                  onPressed: _laserOnInFlight ? null : _laserOn,
+                  icon: _laserOnInFlight
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Icon(Icons.flash_on),
+                  label: const Text('On'),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: SizedBox(
+                height: 50,
+                child: ElevatedButton.icon(
+                  onPressed: _laserOffInFlight ? null : _laserOff,
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+                  icon: _laserOffInFlight
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Icon(Icons.flash_off),
+                  label: const Text('Off'),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool running = _isRunning == true;
@@ -469,6 +569,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 const Divider(),
                 const SizedBox(height: 16),
                 _buildTiltSection(),
+                const SizedBox(height: 32),
+                const Divider(),
+                const SizedBox(height: 16),
+                _buildLaserSection(),
               ],
             ),
           ),

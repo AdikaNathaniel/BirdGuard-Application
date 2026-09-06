@@ -57,4 +57,16 @@ export class DeviceController {
   async tiltRecenter() {
     return this.deviceService.tiltRecenter();
   }
+
+  // Laser (GPIO12, driven directly by the Pi -- not the PCA9685). Same
+  // fixed, fire-and-forget shape as the tilt routes above.
+  @Post('laser/on')
+  async laserOn() {
+    return this.deviceService.laserOn();
+  }
+
+  @Post('laser/off')
+  async laserOff() {
+    return this.deviceService.laserOff();
+  }
 }

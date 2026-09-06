@@ -211,6 +211,26 @@ class ApiClient {
     return _handle(response);
   }
 
+  /// POST /device/laser/on (Bearer token) -> { success, output }
+  /// Drives GPIO12 high, turning the laser on.
+  Future<Map<String, dynamic>> laserOn() async {
+    final response = await _client.post(
+      _uri('/device/laser/on'),
+      headers: await _headers(auth: true),
+    );
+    return _handle(response);
+  }
+
+  /// POST /device/laser/off (Bearer token) -> { success, output }
+  /// Drives GPIO12 low, turning the laser off.
+  Future<Map<String, dynamic>> laserOff() async {
+    final response = await _client.post(
+      _uri('/device/laser/off'),
+      headers: await _headers(auth: true),
+    );
+    return _handle(response);
+  }
+
   /// GET /detections (Bearer token) -> { success, detections: [...] }
   /// [before] (ISO date string) fetches detections older than that
   /// timestamp, for paginating further back in history.

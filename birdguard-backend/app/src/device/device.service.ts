@@ -219,31 +219,46 @@ export class DeviceService {
    * check: the SSH exec not throwing only proves the connection worked,
    * not that the python command inside it actually succeeded (a PCA9685
    * I2C failure, for instance, would otherwise be reported as a false
-   * success). checkTiltResult() below verifies the TILT_OK marker
+   * success). checkMarkerResult() below verifies the OK marker
    * commands.ts prints on the Pi's shell-level success/failure.
    */
   async tiltDown(): Promise<CommandResult> {
-    return this.checkTiltResult(await this.runCommand('TILT_DOWN'));
+    return this.checkMarkerResult(await this.runCommand('TILT_DOWN'), 'TILT_OK', 'Tilt command');
   }
 
   /** Moves the tilt servo back to its fixed "recentered" angle. */
   async tiltRecenter(): Promise<CommandResult> {
-    return this.checkTiltResult(await this.runCommand('TILT_RECENTER'));
+    return this.checkMarkerResult(await this.runCommand('TILT_RECENTER'), 'TILT_OK', 'Tilt command');
+  }
+
+  /** Drives GPIO12 high, turning the laser on. Same fire-and-forget shape as the tilt commands. */
+  async laserOn(): Promise<CommandResult> {
+    return this.checkMarkerResult(await this.runCommand('LASER_ON'), 'LASER_OK', 'Laser command');
+  }
+
+  /** Drives GPIO12 low, turning the laser off. */
+  async laserOff(): Promise<CommandResult> {
+    return this.checkMarkerResult(await this.runCommand('LASER_OFF'), 'LASER_OK', 'Laser command');
   }
 
   /**
-   * Note: this still can't detect a channel with nothing physically
-   * wired to it -- the PCA9685 happily outputs a PWM signal on any
-   * channel 0-15 whether or not a servo is actually listening, so that
-   * failure mode looks identical to a real success from software alone.
+   * Shared success check behind every fixed, one-shot command above
+   * (tilt, laser): the SSH exec not throwing only proves the connection
+   * worked, not that the actual command on the Pi succeeded, so this
+   * looks for the specific OK marker commands.ts echoes on real success
+   * rather than trusting a non-throwing exec alone. Note this still
+   * can't detect a wiring problem (e.g. a channel/pin with nothing
+   * physically connected) -- the Pi-side command can succeed in software
+   * terms while nothing visibly happens, and that failure mode needs a
+   * physical check, not a software one.
    */
-  private checkTiltResult(result: CommandResult): CommandResult {
+  private checkMarkerResult(result: CommandResult, okMarker: string, label: string): CommandResult {
     if (!result.success) return result;
 
     const output = result.output ?? '';
-    if (output.includes('TILT_OK')) {
+    if (output.includes(okMarker)) {
       return { success: true, output };
     }
-    return { success: false, error: output || 'Tilt command did not report success' };
+    return { success: false, error: output || `${label} did not report success` };
   }
 }

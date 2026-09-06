@@ -101,6 +101,15 @@ export const COMMANDS = {
     'source /home/pi/birdguard-env/bin/activate && ' +
     '(python3 -c "from adafruit_servokit import ServoKit; kit = ServoKit(channels=16); kit.servo[8].angle = 110" 2>&1 ' +
     '&& echo TILT_OK || echo TILT_FAILED)',
+  // Laser is driven directly by the Pi's own GPIO12 (not the PCA9685) --
+  // `pinctrl set 12 op dh` drives it high (laser on), `dl` drives it low
+  // (laser off). Same fire-and-forget shape as the tilt commands above:
+  // one instant command, no PID/status to track, and the same
+  // `2>&1 && echo ... || echo ...` pattern so a real pinctrl failure
+  // (e.g. permission denied) is distinguishable from success rather than
+  // both looking identical to DeviceService.
+  LASER_ON: '(pinctrl set 12 op dh 2>&1 && echo LASER_OK || echo LASER_FAILED)',
+  LASER_OFF: '(pinctrl set 12 op dl 2>&1 && echo LASER_OK || echo LASER_FAILED)',
 } as const;
 
 export type CommandKey = keyof typeof COMMANDS;
