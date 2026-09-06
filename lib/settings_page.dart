@@ -327,12 +327,6 @@ class _SettingsPageState extends State<SettingsPage> {
           'Tilt Control',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
-        const SizedBox(height: 4),
-        Text(
-          'Moves the separate tilt servo to a fixed position -- "Down" '
-          'tilts it down, "Recenter" brings it back up.',
-          style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
-        ),
         const SizedBox(height: 16),
         Row(
           children: [
@@ -402,14 +396,6 @@ class _SettingsPageState extends State<SettingsPage> {
                 const Text(
                   'Field of View Sweep',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'The pan servo cycles between two steps -- moving to Step 1\'s '
-                  'angle and holding it, then Step 2\'s angle and holding it, '
-                  'repeating for as long as the sweep runs. For example: Step 1 '
-                  'at 90° for 0.70s, then Step 2 at 140° for 0.90s.',
-                  style: TextStyle(fontSize: 12.5, color: Colors.grey.shade600),
                 ),
                 const SizedBox(height: 20),
                 _buildStep(
