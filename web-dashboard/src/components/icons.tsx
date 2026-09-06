@@ -53,6 +53,14 @@ export function SettingsIcon({ className }: IconProps) {
   );
 }
 
+export function ChevronDoubleLeftIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={base} className={className}>
+      <path d="M11 17l-5-5 5-5M18 17l-5-5 5-5" />
+    </svg>
+  );
+}
+
 export function LogoutIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={base} className={className}>
