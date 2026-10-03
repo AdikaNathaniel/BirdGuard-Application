@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 
+import 'profile_page.dart';
 import 'tabs/camera_feed_tab.dart';
 import 'tabs/detector_tab.dart';
 import 'tabs/logs_tab.dart';
-import 'tabs/profile_tab.dart';
+import 'tabs/settings_tab.dart';
 
 /// Post-login home: a bottom-nav shell with four tabs. Each tab is kept
 /// alive via IndexedStack (rather than rebuilt on every switch) so the
 /// camera feed's connection and the logs list's scroll position persist
-/// while navigating between tabs.
+/// while navigating between tabs. Profile isn't a tab -- it's opened from
+/// the icon in the Camera tab's app bar.
 class MainNavigationPage extends StatefulWidget {
   const MainNavigationPage({super.key});
 
@@ -23,10 +25,10 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
     CameraFeedTab(),
     DetectorTab(),
     LogsTab(),
-    ProfileTab(),
+    SettingsTab(),
   ];
 
-  static const _titles = ['Camera Feed', 'Detector', 'Logs', 'Profile'];
+  static const _titles = ['Camera Feed', 'Detector', 'Logs', 'Settings'];
 
   @override
   Widget build(BuildContext context) {
@@ -34,6 +36,18 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
       backgroundColor: Colors.white,
       appBar: AppBar(
         title: Text(_titles[_currentIndex]),
+        actions: [
+          if (_currentIndex == 0)
+            IconButton(
+              icon: const Icon(Icons.account_circle_outlined),
+              tooltip: 'Profile',
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ProfilePage()),
+                );
+              },
+            ),
+        ],
       ),
       body: IndexedStack(
         index: _currentIndex,
@@ -61,9 +75,9 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
             label: 'Logs',
           ),
           NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person, color: Color(0xFF1976D2)),
-            label: 'Profile',
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings, color: Color(0xFF1976D2)),
+            label: 'Settings',
           ),
         ],
       ),

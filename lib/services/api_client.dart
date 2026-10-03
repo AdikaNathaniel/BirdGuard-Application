@@ -144,75 +144,30 @@ class ApiClient {
     return _handle(response);
   }
 
-  /// POST /device/servo/start (Bearer token)
-  /// body: { angle1, seconds1, angle2, seconds2, channel? } -> { success, output }
-  /// Starts the field-of-view sweep: the servo cycles between step 1
-  /// ([angle1] held for [seconds1]) and step 2 ([angle2] held for
-  /// [seconds2]), repeating until stopped. [channel] defaults to 0 (pan)
-  /// server-side if omitted.
-  Future<Map<String, dynamic>> startServoSweep({
-    required double angle1,
-    required double seconds1,
-    required double angle2,
-    required double seconds2,
-    int? channel,
-  }) async {
-    final response = await _client.post(
-      _uri('/device/servo/start'),
-      headers: await _headers(auth: true),
-      body: jsonEncode({
-        'angle1': angle1,
-        'seconds1': seconds1,
-        'angle2': angle2,
-        'seconds2': seconds2,
-        if (channel != null) 'channel': channel,
-      }),
-    );
-    return _handle(response);
-  }
-
-  /// POST /device/servo/stop (Bearer token) -> { success, output }
-  Future<Map<String, dynamic>> stopServoSweep() async {
-    final response = await _client.post(
-      _uri('/device/servo/stop'),
-      headers: await _headers(auth: true),
-    );
-    return _handle(response);
-  }
-
-  /// GET /device/servo/status (Bearer token) -> { running, pid? }
-  Future<Map<String, dynamic>> getServoSweepStatus() async {
+  /// GET /device/position (Bearer token) -> { success, pan, tilt }
+  /// The last pan/tilt angles the backend commanded.
+  Future<Map<String, dynamic>> getServoPosition() async {
     final response = await _client.get(
-      _uri('/device/servo/status'),
+      _uri('/device/position'),
       headers: await _headers(auth: true),
     );
     return _handle(response);
   }
 
-  /// POST /device/tilt/down (Bearer token) -> { success, output }
-  /// Moves the separate tilt servo straight to its fixed "down" angle.
-  /// No parameters and no running process -- this either succeeds or
-  /// fails immediately, unlike the pan sweep's start/stop/status trio.
-  Future<Map<String, dynamic>> tiltDown() async {
+  /// POST /device/<pan|tilt>/<move> (Bearer token) -> { success, pan, tilt }
+  /// Moves one servo a fixed step (or back to center). [move] is one of the
+  /// fixed backend routes: pan/left, pan/right, tilt/up, tilt/down,
+  /// tilt/recenter.
+  Future<Map<String, dynamic>> moveServo(String move) async {
     final response = await _client.post(
-      _uri('/device/tilt/down'),
-      headers: await _headers(auth: true),
-    );
-    return _handle(response);
-  }
-
-  /// POST /device/tilt/recenter (Bearer token) -> { success, output }
-  /// Moves the tilt servo back to its fixed "recentered" angle.
-  Future<Map<String, dynamic>> tiltRecenter() async {
-    final response = await _client.post(
-      _uri('/device/tilt/recenter'),
+      _uri('/device/$move'),
       headers: await _headers(auth: true),
     );
     return _handle(response);
   }
 
   /// POST /device/laser/on (Bearer token) -> { success, output }
-  /// Drives GPIO12 high, turning the laser on.
+  /// Powers the laser relay, then drives the laser PWM pin high.
   Future<Map<String, dynamic>> laserOn() async {
     final response = await _client.post(
       _uri('/device/laser/on'),
@@ -222,7 +177,7 @@ class ApiClient {
   }
 
   /// POST /device/laser/off (Bearer token) -> { success, output }
-  /// Drives GPIO12 low, turning the laser off.
+  /// Drives the laser PWM pin low, then cuts the relay.
   Future<Map<String, dynamic>> laserOff() async {
     final response = await _client.post(
       _uri('/device/laser/off'),

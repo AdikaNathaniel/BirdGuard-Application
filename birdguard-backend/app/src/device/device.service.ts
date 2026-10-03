@@ -1,7 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NodeSSH } from 'node-ssh';
-import { buildServoSweepCommand, COMMANDS, CommandKey } from './commands';
+import {
+  buildServoSweepCommand,
+  buildSetServoAngleCommand,
+  COMMANDS,
+  CommandKey,
+  SERVO_AXES,
+  SERVO_STEP_DEG,
+  ServoAxis,
+} from './commands';
 
 export interface CommandResult {
   success: boolean;
@@ -16,9 +24,28 @@ export interface DetectorStatusResult {
   error?: string;
 }
 
+export interface ServoPositionResult extends CommandResult {
+  pan: number;
+  tilt: number;
+}
+
 @Injectable()
 export class DeviceService {
   private readonly logger = new Logger(DeviceService.name);
+
+  // Last angles successfully sent to the pan/tilt servos. A hobby servo
+  // can't report where it actually is, so the backend remembers what it
+  // last commanded. Starts at home; after a backend restart (or after the
+  // detector has moved the servos) this can differ from the real position
+  // until the next Recenter.
+  private readonly servoPosition: Record<ServoAxis, number> = {
+    pan: SERVO_AXES.pan.home,
+    tilt: SERVO_AXES.tilt.home,
+  };
+
+  // Serializes servo moves so rapid presses (or the web and mobile app at
+  // once) are applied one at a time, each from the previous one's result.
+  private servoQueue: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly configService: ConfigService) {}
 
@@ -212,38 +239,56 @@ export class DeviceService {
     return running ? { success: true, running: true, pid } : { success: true, running: false };
   }
 
+  /** The last pan/tilt angles the backend commanded (see servoPosition). */
+  getServoPosition(): ServoPositionResult {
+    return { success: true, ...this.servoPosition };
+  }
+
   /**
-   * Moves the separate tilt servo (PCA9685 channel 8) straight to its
-   * fixed "down" angle. Unlike the detector/sweep commands above, this
-   * has no running process to track, but it still needs its own success
-   * check: the SSH exec not throwing only proves the connection worked,
-   * not that the python command inside it actually succeeded (a PCA9685
-   * I2C failure, for instance, would otherwise be reported as a false
-   * success). checkMarkerResult() below verifies the OK marker
-   * commands.ts prints on the Pi's shell-level success/failure.
+   * Moves one servo SERVO_STEP_DEG in `direction` (+1 = right/up,
+   * -1 = left/down), clamped to that axis's range.
    */
-  async tiltDown(): Promise<CommandResult> {
-    return this.checkMarkerResult(await this.runCommand('TILT_DOWN'), 'TILT_OK', 'Tilt command');
+  async stepServo(axis: ServoAxis, direction: 1 | -1): Promise<ServoPositionResult> {
+    return this.moveServo(axis, (current) => current + direction * SERVO_STEP_DEG);
   }
 
-  /** Moves the tilt servo back to its fixed "recentered" angle. */
-  async tiltRecenter(): Promise<CommandResult> {
-    return this.checkMarkerResult(await this.runCommand('TILT_RECENTER'), 'TILT_OK', 'Tilt command');
+  /** Moves one servo back to its home angle. */
+  async recenterServo(axis: ServoAxis): Promise<ServoPositionResult> {
+    return this.moveServo(axis, () => SERVO_AXES[axis].home);
   }
 
-  /** Drives GPIO12 high, turning the laser on. Same fire-and-forget shape as the tilt commands. */
+  private moveServo(axis: ServoAxis, target: (current: number) => number): Promise<ServoPositionResult> {
+    const run = async (): Promise<ServoPositionResult> => {
+      const { min, max } = SERVO_AXES[axis];
+      const angle = Math.max(min, Math.min(max, target(this.servoPosition[axis])));
+      const result = this.checkMarkerResult(
+        await this.execOnPi(buildSetServoAngleCommand(axis, angle), `SET_${axis.toUpperCase()}`),
+        'SERVO_OK',
+        'Servo command',
+      );
+      // Only remember the new angle if the Pi confirmed the move.
+      if (result.success) this.servoPosition[axis] = angle;
+      return { ...result, ...this.servoPosition };
+    };
+
+    const next = this.servoQueue.then(run, run);
+    this.servoQueue = next.catch(() => undefined);
+    return next;
+  }
+
+  /** Powers the relay (GPIO17), then drives the laser PWM pin (GPIO12) high. */
   async laserOn(): Promise<CommandResult> {
     return this.checkMarkerResult(await this.runCommand('LASER_ON'), 'LASER_OK', 'Laser command');
   }
 
-  /** Drives GPIO12 low, turning the laser off. */
+  /** Drives the laser PWM pin (GPIO12) low, then cuts the relay (GPIO17). */
   async laserOff(): Promise<CommandResult> {
     return this.checkMarkerResult(await this.runCommand('LASER_OFF'), 'LASER_OK', 'Laser command');
   }
 
   /**
-   * Shared success check behind every fixed, one-shot command above
-   * (tilt, laser): the SSH exec not throwing only proves the connection
+   * Shared success check behind every one-shot command above
+   * (pan/tilt, laser): the SSH exec not throwing only proves the connection
    * worked, not that the actual command on the Pi succeeded, so this
    * looks for the specific OK marker commands.ts echoes on real success
    * rather than trusting a non-throwing exec alone. Note this still

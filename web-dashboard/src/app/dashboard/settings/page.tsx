@@ -2,40 +2,32 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import { apiClient, ApiException } from "@/lib/api-client";
-import { StatusCard, Spinner } from "@/components/StatusCard";
+import { apiClient, ApiException, type ServoMove } from "@/lib/api-client";
+import { Spinner } from "@/components/StatusCard";
 
 type Toast = { message: string; isError: boolean } | null;
 
-const STATUS_KEY = "servo-sweep-status";
+const POSITION_KEY = "servo-position";
 
 /**
- * Lets the user configure and control the pan servo's field-of-view sweep:
- * a two-step sequence (angle + hold duration for each step) that the servo
- * cycles between repeatedly -- the web equivalent of typing `recur` on the
- * Pi and entering two `p<angle>,<seconds>` steps at the prompt. Mirrors
- * settings_page.dart's Step 1/Step 2 form and its 90/0.70, 140/0.90 hints.
+ * Manual pan/tilt and laser control -- the web version of agromech_birdguard's
+ * test_03b_servo.py (arrow keys move the servos, space recenters) and
+ * test_04_laser.py (o/f switch the laser). Mirrors settings_tab.dart: each
+ * button press is one fixed backend move, and the backend returns the new
+ * { pan, tilt } angles after every move.
  */
 export default function SettingsPage() {
-  const [angle1, setAngle1] = useState("90");
-  const [seconds1, setSeconds1] = useState("0.70");
-  const [angle2, setAngle2] = useState("140");
-  const [seconds2, setSeconds2] = useState("0.90");
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
-  const [startInFlight, setStartInFlight] = useState(false);
-  const [stopInFlight, setStopInFlight] = useState(false);
+  // The move currently waiting on the Pi, or null. Only one move runs at a
+  // time -- each one starts from the previous one's result -- so every servo
+  // button is disabled while one is in flight.
+  const [moveInFlight, setMoveInFlight] = useState<ServoMove | null>(null);
+  const [laserOnInFlight, setLaserOnInFlight] = useState(false);
+  const [laserOffInFlight, setLaserOffInFlight] = useState(false);
   const [toast, setToast] = useState<Toast>(null);
 
-  // useSWR owns the fetch-on-mount + poll-every-5s lifecycle, so this
-  // component never calls setState directly inside an effect body -- it
-  // just reads whatever useSWR's own subscription last resolved to.
-  const { data, error, mutate } = useSWR(STATUS_KEY, () => apiClient.getServoSweepStatus(), {
-    refreshInterval: 5000,
-    // Skip a background refresh while a start/stop is already waiting on
-    // the Pi to reach its real end state, so a concurrent poll can't
-    // race and overwrite that in-flight result.
-    isPaused: () => startInFlight || stopInFlight,
+  // Fetched once on mount; after that each move's response carries the new
+  // angles, so there's nothing to poll.
+  const { data: position, mutate } = useSWR(POSITION_KEY, () => apiClient.getServoPosition(), {
     revalidateOnFocus: false,
   });
 
@@ -44,140 +36,121 @@ export default function SettingsPage() {
     window.setTimeout(() => setToast(null), 3500);
   }
 
-  function validateAngle(value: string): string | null {
-    const n = Number(value);
-    if (value.trim() === "" || Number.isNaN(n)) return "Enter a number";
-    if (n < 0 || n > 180) return "Must be between 0 and 180";
-    return null;
-  }
-
-  function validateSeconds(value: string): string | null {
-    const n = Number(value);
-    if (value.trim() === "" || Number.isNaN(n)) return "Enter a number";
-    if (n < 0.05 || n > 5) return "Must be between 0.05 and 5";
-    return null;
-  }
-
-  function validateAll(): boolean {
-    const next: Record<string, string> = {};
-    const a1 = validateAngle(angle1);
-    const s1 = validateSeconds(seconds1);
-    const a2 = validateAngle(angle2);
-    const s2 = validateSeconds(seconds2);
-    if (a1) next.angle1 = a1;
-    if (s1) next.seconds1 = s1;
-    if (a2) next.angle2 = a2;
-    if (s2) next.seconds2 = s2;
-    setErrors(next);
-    return Object.keys(next).length === 0;
-  }
-
-  async function startSweep() {
-    if (!validateAll()) return;
-
-    setStartInFlight(true);
+  async function move(target: ServoMove, failureLabel: string) {
+    setMoveInFlight(target);
     try {
-      const result = await apiClient.startServoSweep({
-        angle1: Number(angle1),
-        seconds1: Number(seconds1),
-        angle2: Number(angle2),
-        seconds2: Number(seconds2),
-      });
-      const success = result["success"] !== false;
-      showToast(success ? "Sweep started" : "Failed to start sweep", !success);
-      if (success) {
-        // The backend already verifies the process is actually alive before
-        // reporting success -- trust it directly.
-        const output = String(result["output"] ?? "");
-        const match = output.match(/STARTED\s+(\d+)/);
-        mutate({ success: true, running: true, pid: match ? match[1] : undefined }, false);
-      } else {
-        mutate();
+      const result = await apiClient.moveServo(target);
+      mutate(result, false);
+      if (result["success"] === false) {
+        showToast(`Failed to ${failureLabel}: ${String(result["error"] ?? "unknown error")}`, true);
       }
     } catch (err) {
       const message = err instanceof ApiException ? err.message : "connection error";
-      showToast(`Failed to start sweep: ${message}`, true);
-      mutate();
+      showToast(`Failed to ${failureLabel}: ${message}`, true);
     } finally {
-      setStartInFlight(false);
+      setMoveInFlight(null);
     }
   }
 
-  async function stopSweep() {
-    setStopInFlight(true);
+  async function laser(on: boolean) {
+    const setInFlight = on ? setLaserOnInFlight : setLaserOffInFlight;
+    const action = on ? "turn laser on" : "turn laser off";
+    setInFlight(true);
     try {
-      const result = await apiClient.stopServoSweep();
+      const result = await (on ? apiClient.laserOn() : apiClient.laserOff());
       const success = result["success"] !== false;
-      showToast(success ? "Sweep stopped" : "Failed to stop sweep", !success);
-      if (success) {
-        mutate({ success: true, running: false }, false);
-      } else {
-        mutate();
-      }
+      showToast(success ? (on ? "Laser on" : "Laser off") : `Failed to ${action}`, !success);
     } catch (err) {
       const message = err instanceof ApiException ? err.message : "connection error";
-      showToast(`Failed to stop sweep: ${message}`, true);
-      mutate();
+      showToast(`Failed to ${action}: ${message}`, true);
     } finally {
-      setStopInFlight(false);
+      setInFlight(false);
     }
   }
 
-  const isRunning = data ? data["running"] === true : null;
-  const pid = data?.["pid"] != null ? String(data["pid"]) : null;
-  const statusError = Boolean(error);
-
-  const running = isRunning === true;
-  const unknown = isRunning === null || statusError;
-  // Editing a sweep already in progress would be ambiguous (which value
-  // does the app apply, and when?) -- so the fields are locked while a
-  // sweep is running; stop it first to change them.
-  const fieldsEnabled = !running && !startInFlight && !stopInFlight;
-
-  let label: string;
-  if (startInFlight) label = "Sweep: Starting…";
-  else if (stopInFlight) label = "Sweep: Stopping…";
-  else if (statusError && isRunning === null) label = "Sweep: Unknown (status unavailable)";
-  else if (unknown) label = "Sweep: Checking…";
-  else label = running ? "Sweep: Running" : "Sweep: Stopped";
+  const pan = typeof position?.["pan"] === "number" ? Math.round(position["pan"]) : null;
+  const tilt = typeof position?.["tilt"] === "number" ? Math.round(position["tilt"]) : null;
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <h1 className="text-base font-bold">Field of View Sweep</h1>
-        <p className="mt-1 text-[12.5px] text-black/60">
-          The pan servo cycles between two steps — moving to Step 1&apos;s angle and holding it, then
-          Step 2&apos;s angle and holding it, repeating for as long as the sweep runs. For example: Step 1
-          at 90° for 0.70s, then Step 2 at 140° for 0.90s.
-        </p>
-      </div>
+      <p className="text-[12.5px] text-black/60">
+        Stop the detector before moving the servos by hand — it moves them itself while tracking.
+      </p>
 
-      <Step
-        title="Step 1"
-        angle={angle1}
-        seconds={seconds1}
-        onAngle={setAngle1}
-        onSeconds={setSeconds1}
-        angleHint="e.g. 90"
-        secondsHint="e.g. 0.70"
-        angleError={errors.angle1}
-        secondsError={errors.seconds1}
-        enabled={fieldsEnabled}
-      />
-      <Step
-        title="Step 2"
-        angle={angle2}
-        seconds={seconds2}
-        onAngle={setAngle2}
-        onSeconds={setSeconds2}
-        angleHint="e.g. 140"
-        secondsHint="e.g. 0.90"
-        angleError={errors.angle2}
-        secondsError={errors.seconds2}
-        enabled={fieldsEnabled}
-      />
+      <section className="flex flex-col gap-4">
+        <SectionHeader title="Pan" angle={pan} range="0-180°" />
+        <div className="flex gap-3">
+          <MoveButton
+            label="Left"
+            icon="←"
+            busy={moveInFlight === "pan/left"}
+            disabled={moveInFlight !== null}
+            onClick={() => move("pan/left", "pan left")}
+          />
+          <MoveButton
+            label="Right"
+            icon="→"
+            busy={moveInFlight === "pan/right"}
+            disabled={moveInFlight !== null}
+            onClick={() => move("pan/right", "pan right")}
+          />
+        </div>
+      </section>
 
-      <StatusCard label={label} dotColor={unknown ? "grey" : running ? "green" : "grey"} pid={pid} running={running} />
+      <hr className="border-black/10" />
+
+      <section className="flex flex-col gap-4">
+        <SectionHeader title="Tilt" angle={tilt} range="40-140°" />
+        <div className="flex gap-3">
+          <MoveButton
+            label="Up"
+            icon="↑"
+            busy={moveInFlight === "tilt/up"}
+            disabled={moveInFlight !== null}
+            onClick={() => move("tilt/up", "tilt up")}
+          />
+          <MoveButton
+            label="Down"
+            icon="↓"
+            busy={moveInFlight === "tilt/down"}
+            disabled={moveInFlight !== null}
+            onClick={() => move("tilt/down", "tilt down")}
+          />
+        </div>
+        <div className="flex">
+          <MoveButton
+            label="Recenter"
+            icon="⊙"
+            busy={moveInFlight === "tilt/recenter"}
+            disabled={moveInFlight !== null}
+            onClick={() => move("tilt/recenter", "recenter")}
+          />
+        </div>
+      </section>
+
+      <hr className="border-black/10" />
+
+      <section className="flex flex-col gap-4">
+        <h2 className="text-base font-bold">Laser</h2>
+        <div className="flex gap-3">
+          <button
+            onClick={() => laser(true)}
+            disabled={laserOnInFlight}
+            className="flex h-[50px] flex-1 items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {laserOnInFlight ? <Spinner /> : <span aria-hidden>⚡</span>}
+            On
+          </button>
+          <button
+            onClick={() => laser(false)}
+            disabled={laserOffInFlight}
+            className="flex h-[50px] flex-1 items-center justify-center gap-2 rounded-xl bg-red-500 text-sm font-semibold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {laserOffInFlight ? <Spinner /> : <span aria-hidden>■</span>}
+            Off
+          </button>
+        </div>
+      </section>
 
       {toast && (
         <div
@@ -186,81 +159,42 @@ export default function SettingsPage() {
           {toast.message}
         </div>
       )}
-
-      <div className="flex gap-3">
-        <button
-          onClick={startSweep}
-          disabled={startInFlight || running}
-          className="flex h-[50px] flex-1 items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {startInFlight ? <Spinner /> : "▶"}
-          Start Sweep
-        </button>
-        <button
-          onClick={stopSweep}
-          disabled={stopInFlight || !running}
-          className="flex h-[50px] flex-1 items-center justify-center gap-2 rounded-xl bg-red-500 text-sm font-semibold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400"
-        >
-          {stopInFlight ? <Spinner /> : "■"}
-          Stop Sweep
-        </button>
-      </div>
     </div>
   );
 }
 
-function Step({
-  title,
-  angle,
-  seconds,
-  onAngle,
-  onSeconds,
-  angleHint,
-  secondsHint,
-  angleError,
-  secondsError,
-  enabled,
+function SectionHeader({ title, angle, range }: { title: string; angle: number | null; range: string }) {
+  return (
+    <div className="flex items-baseline">
+      <h2 className="flex-1 text-base font-bold">{title}</h2>
+      <span className="text-[13px] text-black/50">
+        {angle === null ? "—" : `${angle}°`} ({range})
+      </span>
+    </div>
+  );
+}
+
+function MoveButton({
+  label,
+  icon,
+  busy,
+  disabled,
+  onClick,
 }: {
-  title: string;
-  angle: string;
-  seconds: string;
-  onAngle: (v: string) => void;
-  onSeconds: (v: string) => void;
-  angleHint: string;
-  secondsHint: string;
-  angleError?: string;
-  secondsError?: string;
-  enabled: boolean;
+  label: string;
+  icon: string;
+  busy: boolean;
+  disabled: boolean;
+  onClick: () => void;
 }) {
   return (
-    <div>
-      <p className="mb-2 text-[13px] font-semibold text-black/70">{title}</p>
-      <div className="flex gap-3">
-        <div className="flex-1">
-          <input
-            type="number"
-            value={angle}
-            disabled={!enabled}
-            onChange={(e) => onAngle(e.target.value)}
-            placeholder={angleHint}
-            className="w-full rounded-xl border border-black/15 px-3 py-2.5 text-sm outline-none focus:border-accent disabled:bg-black/5 disabled:text-black/40"
-          />
-          <span className="mt-1 block text-[11px] text-black/40">Angle (0-180), {angleHint}</span>
-          {angleError && <p className="mt-1 text-xs text-red-600">{angleError}</p>}
-        </div>
-        <div className="flex-1">
-          <input
-            type="number"
-            value={seconds}
-            disabled={!enabled}
-            onChange={(e) => onSeconds(e.target.value)}
-            placeholder={secondsHint}
-            className="w-full rounded-xl border border-black/15 px-3 py-2.5 text-sm outline-none focus:border-accent disabled:bg-black/5 disabled:text-black/40"
-          />
-          <span className="mt-1 block text-[11px] text-black/40">Hold (sec), {secondsHint}</span>
-          {secondsError && <p className="mt-1 text-xs text-red-600">{secondsError}</p>}
-        </div>
-      </div>
-    </div>
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="flex h-[50px] flex-1 items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-white transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {busy ? <Spinner /> : <span aria-hidden>{icon}</span>}
+      {label}
+    </button>
   );
 }

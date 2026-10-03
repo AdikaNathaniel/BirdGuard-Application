@@ -105,6 +105,9 @@ async function handle(response: Response): Promise<Record<string, unknown>> {
   throw new ApiException(response.status, message);
 }
 
+/** The fixed manual servo moves the backend exposes. */
+export type ServoMove = "pan/left" | "pan/right" | "tilt/up" | "tilt/down" | "tilt/recenter";
+
 export const apiClient = {
   /** POST /auth/register */
   async register(input: {
@@ -165,38 +168,39 @@ export const apiClient = {
     return handle(response);
   },
 
+  /** GET /device/position -- the last pan/tilt angles the backend commanded. */
+  async getServoPosition() {
+    const response = await fetch(`${API_BASE_URL}/device/position`, {
+      headers: headers(true),
+    });
+    return handle(response);
+  },
+
   /**
-   * POST /device/servo/start -- starts the field-of-view sweep: the servo
-   * cycles between step 1 (angle1 held for seconds1) and step 2 (angle2
-   * held for seconds2), repeating until stopped.
+   * POST /device/<move> -- moves one servo a fixed step (or back to
+   * center) and returns the new { pan, tilt } angles.
    */
-  async startServoSweep(input: {
-    angle1: number;
-    seconds1: number;
-    angle2: number;
-    seconds2: number;
-    channel?: number;
-  }) {
-    const response = await fetch(`${API_BASE_URL}/device/servo/start`, {
-      method: "POST",
-      headers: headers(true),
-      body: JSON.stringify(input),
-    });
-    return handle(response);
-  },
-
-  /** POST /device/servo/stop */
-  async stopServoSweep() {
-    const response = await fetch(`${API_BASE_URL}/device/servo/stop`, {
+  async moveServo(move: ServoMove) {
+    const response = await fetch(`${API_BASE_URL}/device/${move}`, {
       method: "POST",
       headers: headers(true),
     });
     return handle(response);
   },
 
-  /** GET /device/servo/status */
-  async getServoSweepStatus() {
-    const response = await fetch(`${API_BASE_URL}/device/servo/status`, {
+  /** POST /device/laser/on -- powers the relay, then the laser PWM pin. */
+  async laserOn() {
+    const response = await fetch(`${API_BASE_URL}/device/laser/on`, {
+      method: "POST",
+      headers: headers(true),
+    });
+    return handle(response);
+  },
+
+  /** POST /device/laser/off -- drops the laser PWM pin, then the relay. */
+  async laserOff() {
+    const response = await fetch(`${API_BASE_URL}/device/laser/off`, {
+      method: "POST",
       headers: headers(true),
     });
     return handle(response);

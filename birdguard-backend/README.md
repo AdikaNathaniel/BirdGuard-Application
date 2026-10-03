@@ -1,7 +1,7 @@
 # birdguard-backend
 
 NestJS backend for BirdGuard. Lets the mobile app and web dashboard register/log in users and
-remotely control the Raspberry Pi's person detector and pan-servo sweep over SSH, without ever
+remotely control the Raspberry Pi's person detector, pan/tilt servos and laser over SSH, without ever
 exposing Pi credentials or a raw shell to the client.
 
 ## Architecture
@@ -74,8 +74,19 @@ detector. Returns `{ "success": true, "output": "..." }`, `{ "success": true, "r
 
 ### `POST /device/servo/start` / `POST /device/servo/stop` / `GET /device/servo/status`
 Require JWT. Starts/stops/checks the pan servo's field-of-view sweep -- a two-step sequence
-(`{ angle1, seconds1, angle2, seconds2, channel? }`) the servo cycles between, matching the
-Settings page in both client apps.
+(`{ angle1, seconds1, angle2, seconds2, channel? }`) the servo cycles between. No longer used by
+either client app (replaced by the manual pan/tilt routes below).
+
+### `GET /device/position` / `POST /device/pan/{left,right}` / `POST /device/tilt/{up,down,recenter}`
+Require JWT. Manual pan/tilt control for the Settings page in both client apps, using the same setup
+as `agromech_birdguard/laser_tracker/tests/test_03b_servo.py`: pan on PCA9685 channel 2 (0-180°),
+tilt on channel 3 (40-140°), both homed at 90°. Each move steps one servo 5° (clamped to its range)
+and returns `{ success, pan, tilt }`. The backend remembers the last angles it commanded, since the
+servos can't report their position; after a backend restart these reset to 90/90.
+
+### `POST /device/laser/on` / `POST /device/laser/off`
+Require JWT. On powers the relay (GPIO17), waits 0.1s, then drives the laser PWM pin (GPIO12) high;
+off drops GPIO12 then GPIO17 -- the same order as `agromech_birdguard`'s `test_04_laser.py`.
 
 ### `GET /detections?limit=&before=`
 Require JWT. Read-only page of detection events (the Pi writes these directly to MongoDB).
@@ -87,9 +98,9 @@ Require JWT. Read-only page of detection events (the Pi writes these directly to
   stored in either client app.
 - `DeviceService` exposes a fixed, hardcoded whitelist of commands
   (`app/src/device/commands.ts`) -- no endpoint anywhere in this backend accepts a free-text or
-  arbitrary shell command from a client. The one parameterized exception (the servo sweep's
-  angle/seconds values) is strictly validated as bounded numbers before being formatted into the
-  command string, so it can never smuggle shell syntax.
+  arbitrary shell command from a client. The parameterized exceptions (the servo sweep's
+  angle/seconds values and the pan/tilt target angle) are strictly validated as bounded numbers before being formatted into the
+  command string, so they can never smuggle shell syntax.
 - `/device/*` and `/detections` routes require a valid JWT, issued only by `AuthService` after a
   successful login.
 

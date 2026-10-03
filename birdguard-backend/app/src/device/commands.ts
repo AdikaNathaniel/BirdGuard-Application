@@ -8,8 +8,8 @@
  * and a matching controller route / service method, following the existing
  * pattern (see device.controller.ts and device.service.ts).
  *
- * The one exception is buildServoSweepCommand() below, which accepts numeric
- * parameters (angle, seconds) from the app's Settings page. This does not
+ * The exceptions are buildServoSweepCommand() and buildSetServoAngleCommand()
+ * below, which accept numeric parameters (angle, seconds). This does not
  * weaken the boundary above: every parameter is strictly validated as a
  * finite number within a fixed range before being formatted into the
  * command, so the resulting string can never contain shell metacharacters -
@@ -60,6 +60,10 @@ export const COMMANDS = {
     'pkill -f [p]i_person_detector_cpu.py || true; ' +
     'for i in $(seq 1 10); do pgrep -f [p]i_person_detector_cpu.py >/dev/null 2>&1 || break; sleep 0.5; done; ' +
     'pkill -9 -f [p]i_person_detector_cpu.py || true; sleep 0.3; ' +
+    // A SIGKILL skips the detector's own finally-block cleanup, so force the
+    // laser PWM pin and relay low here too -- otherwise a laser that was on
+    // at kill time stays on after the app reports "stopped".
+    'pinctrl set 12 op dl >/dev/null 2>&1; pinctrl set 17 op dl >/dev/null 2>&1; ' +
     'pgrep -f [p]i_person_detector_cpu.py >/dev/null 2>&1 && echo STILL_RUNNING || echo STOPPED',
   DETECTOR_STATUS: 'pgrep -f [p]i_person_detector_cpu.py || true',
   // Same wait-for-real-death pattern as STOP_DETECTOR above, and the same
@@ -70,46 +74,22 @@ export const COMMANDS = {
     'pkill -9 -f [p]i_servo_calibrate.py || true; sleep 0.3; ' +
     'pgrep -f [p]i_servo_calibrate.py >/dev/null 2>&1 && echo STILL_RUNNING || echo STOPPED',
   SERVO_SWEEP_STATUS: 'pgrep -f [p]i_servo_calibrate.py || true',
-  // Fixed, one-shot tilt commands for the separate tilt servo on PCA9685
-  // channel 8 (see tilt-test/pi_tilt_test.py, the standalone script these
-  // angles were found and confirmed with). Unlike the pan sweep above,
-  // this isn't a long-running background process -- the python one-liner
-  // sets the angle and exits immediately, so there's no PID/status to
-  // track, just two fire-and-forget actions. 140 and 110 are inverted
-  // relative to raw angle for how this servo is mounted: 140 physically
-  // tilts it down, 110 physically tilts it back up (see the comments in
-  // pi_tilt_test.py for how that was determined).
-  // `&& echo TILT_OK || echo TILT_FAILED` (rather than trusting the SSH
-  // exec to just not throw) means a real failure inside the python
-  // process itself -- e.g. the PCA9685 not responding on the I2C bus, or
-  // the venv/import failing -- is distinguishable from a genuine success,
-  // instead of both looking identical to DeviceService. It can't detect
-  // a channel with nothing physically wired to it, though: the PCA9685
-  // happily outputs a PWM signal on any channel 0-15 whether or not
-  // anything is listening, so that failure mode still needs a physical
-  // check, not a software one.
-  // `2>&1` before the OK/FAILED check means a python traceback (e.g. the
-  // PCA9685 not responding on the I2C bus) is captured alongside the
-  // marker, not silently discarded -- so a real failure is both
-  // detectable AND debuggable from the response, not just a bare
-  // "FAILED".
-  TILT_DOWN:
-    'source /home/pi/birdguard-env/bin/activate && ' +
-    '(python3 -c "from adafruit_servokit import ServoKit; kit = ServoKit(channels=16); kit.servo[8].angle = 140" 2>&1 ' +
-    '&& echo TILT_OK || echo TILT_FAILED)',
-  TILT_RECENTER:
-    'source /home/pi/birdguard-env/bin/activate && ' +
-    '(python3 -c "from adafruit_servokit import ServoKit; kit = ServoKit(channels=16); kit.servo[8].angle = 110" 2>&1 ' +
-    '&& echo TILT_OK || echo TILT_FAILED)',
-  // Laser is driven directly by the Pi's own GPIO12 (not the PCA9685) --
-  // `pinctrl set 12 op dh` drives it high (laser on), `dl` drives it low
-  // (laser off). Same fire-and-forget shape as the tilt commands above:
-  // one instant command, no PID/status to track, and the same
-  // `2>&1 && echo ... || echo ...` pattern so a real pinctrl failure
-  // (e.g. permission denied) is distinguishable from success rather than
-  // both looking identical to DeviceService.
-  LASER_ON: '(pinctrl set 12 op dh 2>&1 && echo LASER_OK || echo LASER_FAILED)',
-  LASER_OFF: '(pinctrl set 12 op dl 2>&1 && echo LASER_OK || echo LASER_FAILED)',
+  // Laser = relay (GPIO17, switches the laser PSU's positive line) + PWM
+  // signal (GPIO12, jumpered onto PCA9685 ch 12's PWM pin). Same order as
+  // agromech_birdguard/laser_tracker/src/hardware/laser.py: on powers the
+  // relay first and lets the supply settle before the PWM pin goes high;
+  // off drops the PWM pin first, then the relay. GPIO12 alone does nothing
+  // with the relay open, so both pins always move together.
+  // `2>&1 && echo ... || echo ...` so a real pinctrl failure (e.g.
+  // permission denied) is distinguishable from success rather than both
+  // looking identical to DeviceService. LASER_OFF tries both pins even if
+  // the first fails, so a half-failure never leaves the relay powered.
+  LASER_ON:
+    '(pinctrl set 17 op dh 2>&1 && sleep 0.1 && pinctrl set 12 op dh 2>&1 ' +
+    '&& echo LASER_OK || echo LASER_FAILED)',
+  LASER_OFF:
+    '(pinctrl set 12 op dl 2>&1; A=$?; pinctrl set 17 op dl 2>&1; B=$?; ' +
+    '[ $A -eq 0 ] && [ $B -eq 0 ] && echo LASER_OK || echo LASER_FAILED)',
 } as const;
 
 export type CommandKey = keyof typeof COMMANDS;
@@ -175,5 +155,52 @@ export function buildServoSweepCommand(
     '> /home/pi/servo_sweep.log 2>&1 < /dev/null & ' +
     'PID=$!; sleep 1; ' +
     'if kill -0 $PID 2>/dev/null; then echo "STARTED $PID"; else echo "FAILED"; tail -n 20 /home/pi/servo_sweep.log; fi'
+  );
+}
+
+// Manual pan/tilt control (Settings page) -- same hardware setup as
+// agromech_birdguard/laser_tracker/tests/test_03b_servo.py and
+// config/settings.py: pan on PCA9685 ch 2 (0-180), tilt on ch 3 (40-140,
+// keeps the laser on the backdrop), both homed at 90, 500-2500us pulses.
+// LEFT/DOWN decrease the angle, RIGHT/UP increase it, matching the test's
+// arrow-key mapping.
+export const SERVO_AXES = {
+  pan: { channel: 2, min: 0, max: 180, home: 90 },
+  tilt: { channel: 3, min: 40, max: 140, home: 90 },
+} as const;
+
+export type ServoAxis = keyof typeof SERVO_AXES;
+
+// Degrees per button press. test_03b uses 2 per keypress, but each press
+// here is a full SSH round trip (~1-2s), so a bigger step keeps it usable.
+export const SERVO_STEP_DEG = 5;
+
+const SERVO_PULSE_MIN_US = 500;
+const SERVO_PULSE_MAX_US = 2500;
+
+/**
+ * Builds the one-shot SSH command that moves one pan/tilt servo to `angle`.
+ * Same security reasoning as buildServoSweepCommand(): `axis` only ever
+ * selects a fixed entry from SERVO_AXES, and `angle` is validated as a
+ * finite number inside that axis's range before being formatted, so the
+ * command can't carry shell syntax.
+ */
+export function buildSetServoAngleCommand(axis: ServoAxis, angle: number): string {
+  const config = SERVO_AXES[axis];
+  if (!config) {
+    throw new Error(`Unknown servo axis: ${String(axis)}`);
+  }
+  if (!Number.isFinite(angle) || angle < config.min || angle > config.max) {
+    throw new Error(`${axis} angle must be a number between ${config.min} and ${config.max}`);
+  }
+
+  const safeAngle = angle.toFixed(2);
+
+  return (
+    'source /home/pi/birdguard-env/bin/activate && ' +
+    '(python3 -c "from adafruit_servokit import ServoKit; kit = ServoKit(channels=16, address=0x40); ' +
+    `s = kit.servo[${config.channel}]; s.set_pulse_width_range(${SERVO_PULSE_MIN_US}, ${SERVO_PULSE_MAX_US}); ` +
+    `s.angle = ${safeAngle}" 2>&1 ` +
+    '&& echo SERVO_OK || echo SERVO_FAILED)'
   );
 }

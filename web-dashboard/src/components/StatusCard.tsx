@@ -1,7 +1,6 @@
 /**
- * Shared status pill used by both the Detector page and the Settings
- * (servo sweep) page -- mirrors `_buildStatusCard()` from detector_tab.dart
- * and settings_page.dart, which are otherwise identical.
+ * Status pill used by the Detector page -- mirrors `_buildStatusCard()`
+ * from detector_tab.dart.
  */
 export function StatusCard({
   label,

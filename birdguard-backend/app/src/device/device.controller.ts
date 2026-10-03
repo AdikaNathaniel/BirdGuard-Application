@@ -45,21 +45,40 @@ export class DeviceController {
     return this.deviceService.getServoSweepStatus();
   }
 
-  // Separate tilt servo (channel 8) -- two fixed-position actions, no
-  // parameters and no running process to start/stop, so just one route
-  // per action rather than the start/stop/status trio above.
+  // Manual pan/tilt control (Settings page). Each press moves one servo a
+  // fixed step and returns the new { pan, tilt } angles; no parameters, so
+  // the client can only ever pick one of these fixed moves.
+  @Get('position')
+  getServoPosition() {
+    return this.deviceService.getServoPosition();
+  }
+
+  @Post('pan/left')
+  async panLeft() {
+    return this.deviceService.stepServo('pan', -1);
+  }
+
+  @Post('pan/right')
+  async panRight() {
+    return this.deviceService.stepServo('pan', 1);
+  }
+
+  @Post('tilt/up')
+  async tiltUp() {
+    return this.deviceService.stepServo('tilt', 1);
+  }
+
   @Post('tilt/down')
   async tiltDown() {
-    return this.deviceService.tiltDown();
+    return this.deviceService.stepServo('tilt', -1);
   }
 
   @Post('tilt/recenter')
   async tiltRecenter() {
-    return this.deviceService.tiltRecenter();
+    return this.deviceService.recenterServo('tilt');
   }
 
-  // Laser (GPIO12, driven directly by the Pi -- not the PCA9685). Same
-  // fixed, fire-and-forget shape as the tilt routes above.
+  // Laser: relay (GPIO17) + PWM pin (GPIO12), always switched together.
   @Post('laser/on')
   async laserOn() {
     return this.deviceService.laserOn();
