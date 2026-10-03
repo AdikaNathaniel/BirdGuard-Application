@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { ProfileIcon } from "@/components/icons";
 
 /**
  * URL of the Pi's existing MJPEG camera stream (from `pi_person_detector_cpu.py`).
@@ -23,7 +25,16 @@ export default function CameraFeedPage() {
 
   return (
     <div className="flex flex-col gap-3">
-      <h1 className="text-base font-bold">Live Camera Feed</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-base font-bold">Live Camera Feed</h1>
+        <Link
+          href="/dashboard/profile"
+          className="rounded-full p-2 text-black/60 transition hover:bg-black/5 hover:text-accent"
+          title="Profile"
+        >
+          <ProfileIcon className="h-6 w-6" />
+        </Link>
+      </div>
 
       <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-black/15 bg-gray-100">
         {!errored && (

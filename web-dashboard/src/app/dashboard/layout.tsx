@@ -5,20 +5,21 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { tokenStorage } from "@/lib/api-client";
-import { CameraIcon, ChevronDoubleLeftIcon, DetectorIcon, LogsIcon, ProfileIcon } from "@/components/icons";
+import { CameraIcon, ChevronDoubleLeftIcon, DetectorIcon, LogsIcon, SettingsIcon } from "@/components/icons";
 
 const SIDEBAR_COLLAPSED_KEY = "birdguard_sidebar_collapsed";
 
 const NAV_ITEMS = [
-  { href: "/dashboard", label: "Camera Feed", icon: CameraIcon, match: (p: string) => p === "/dashboard" },
+  {
+    href: "/dashboard",
+    label: "Camera Feed",
+    icon: CameraIcon,
+    // Profile is opened from the Camera page's header, so it stays highlighted there.
+    match: (p: string) => p === "/dashboard" || p.startsWith("/dashboard/profile"),
+  },
   { href: "/dashboard/detector", label: "Detector", icon: DetectorIcon, match: (p: string) => p.startsWith("/dashboard/detector") },
   { href: "/dashboard/logs", label: "Logs", icon: LogsIcon, match: (p: string) => p.startsWith("/dashboard/logs") },
-  {
-    href: "/dashboard/profile",
-    label: "Profile",
-    icon: ProfileIcon,
-    match: (p: string) => p.startsWith("/dashboard/profile") || p.startsWith("/dashboard/settings"),
-  },
+  { href: "/dashboard/settings", label: "Settings", icon: SettingsIcon, match: (p: string) => p.startsWith("/dashboard/settings") },
 ];
 
 /**
@@ -26,8 +27,8 @@ const NAV_ITEMS = [
  * desktop equivalent of the Flutter app's bottom NavigationBar) plus a
  * client-side redirect to /login when there's no stored JWT. Mirrors
  * MainNavigationPage's four destinations (Camera / Detector / Logs /
- * Profile), with Settings folded under Profile just like the mobile app's
- * settings-icon-on-the-profile-tab pattern.
+ * Settings). Profile isn't a nav item -- like the mobile app, it's opened
+ * from the profile icon in the Camera page's header.
  */
 export default function DashboardLayout({ children }: LayoutProps<"/dashboard">) {
   const router = useRouter();

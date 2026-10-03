@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { readClaims, tokenStorage } from "@/lib/api-client";
-import { SettingsIcon, LogoutIcon } from "@/components/icons";
+import { LogoutIcon } from "@/components/icons";
 
+/** Opened from the profile icon at the top of the Camera page. */
 export default function ProfilePage() {
   const router = useRouter();
   const [claims, setClaims] = useState<Record<string, unknown> | null>(null);
@@ -32,14 +33,14 @@ export default function ProfilePage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex justify-end">
+      <div className="flex items-center gap-2">
         <Link
-          href="/dashboard/settings"
-          className="rounded-full p-2 text-black/60 transition hover:bg-black/5"
-          title="Settings"
+          href="/dashboard"
+          className="rounded-full px-3 py-1.5 text-sm font-medium text-black/60 transition hover:bg-black/5"
         >
-          <SettingsIcon className="h-5 w-5" />
+          ← Back to camera
         </Link>
+        <h1 className="text-base font-bold">Profile</h1>
       </div>
 
       <div className="flex flex-col items-center gap-3">
