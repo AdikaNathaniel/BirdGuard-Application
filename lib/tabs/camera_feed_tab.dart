@@ -5,8 +5,10 @@ import '../widgets/mjpeg_view.dart';
 
 /// URL of the Pi's existing MJPEG camera stream (from `pi_person_detector_cpu.py`).
 /// This is loaded directly by the Flutter app — it does NOT go through the
-/// NestJS backend. CONFIGURE ME: update the host if the Pi's LAN IP changes.
-const String cameraFeedUrl = 'http://192.168.0.104:8080/';
+/// NestJS backend. Served publicly over HTTPS by Tailscale Funnel on the Pi
+/// (`sudo tailscale funnel --bg 8080`), so it works from any network. The
+/// host is the Pi's tailnet machine name -- renaming the Pi changes this URL.
+const String cameraFeedUrl = 'https://birdguard-3.tail894384.ts.net/';
 
 class CameraFeedTab extends StatefulWidget {
   const CameraFeedTab({super.key});

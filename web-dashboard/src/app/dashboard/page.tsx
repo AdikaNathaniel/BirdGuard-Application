@@ -8,9 +8,12 @@ import { ProfileIcon } from "@/components/icons";
  * URL of the Pi's existing MJPEG camera stream (from `pi_person_detector_cpu.py`).
  * Loaded directly by the browser -- does NOT go through the NestJS backend,
  * same as `cameraFeedUrl` in the Flutter app's camera_feed_tab.dart.
- * CONFIGURE ME: update the host if the Pi's LAN IP changes.
+ * Served publicly over HTTPS by Tailscale Funnel on the Pi
+ * (`sudo tailscale funnel --bg 8080`), so it works from the deployed https
+ * site and from any network. The host is the Pi's tailnet machine name --
+ * renaming the Pi in Tailscale changes this URL.
  */
-const CAMERA_FEED_URL = "http://192.168.0.104:8080/";
+const CAMERA_FEED_URL = "https://birdguard-3.tail894384.ts.net/";
 
 export default function CameraFeedPage() {
   const [reloadKey, setReloadKey] = useState(0);
