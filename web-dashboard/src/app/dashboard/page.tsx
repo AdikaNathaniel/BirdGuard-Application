@@ -10,7 +10,7 @@ import { ProfileIcon } from "@/components/icons";
  * same as `cameraFeedUrl` in the Flutter app's camera_feed_tab.dart.
  * CONFIGURE ME: update the host if the Pi's LAN IP changes.
  */
-const CAMERA_FEED_URL = "http://192.168.43.233:8080/";
+const CAMERA_FEED_URL = "http://192.168.0.104:8080/";
 
 export default function CameraFeedPage() {
   const [reloadKey, setReloadKey] = useState(0);
